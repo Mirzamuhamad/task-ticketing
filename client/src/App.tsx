@@ -7,6 +7,7 @@ import {
   Filter,
   Loader2,
   LogOut,
+  Menu,
   MessageSquareText,
   Minus,
   MoreVertical,
@@ -22,7 +23,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { FormEvent, ReactNode } from 'react';
+import type { FormEvent, KeyboardEvent, ReactNode } from 'react';
 import { api, uploadUrl } from './lib/api';
 import { disconnectSocket, getSocket } from './lib/socket';
 import type {
@@ -61,7 +62,6 @@ type TimelineItem =
   | { id: string; kind: 'created'; at: string }
   | { id: string; kind: 'workflow'; at: string; log: TicketWorkflowLog }
   | { id: string; kind: 'workflowFallback'; at: string }
-  | { id: string; kind: 'ticketAttachment'; at: string; attachment: Attachment }
   | { id: string; kind: 'message'; at: string; message: TicketMessage };
 
 export function App() {
@@ -75,6 +75,8 @@ export function App() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [view, setView] = useState<'dashboard' | 'create' | 'detail'>('dashboard');
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -164,6 +166,13 @@ export function App() {
     const detail = await api.ticket(ticket.id);
     setSelectedTicket(detail);
     setView('detail');
+    const unreadTicketNotifications = notifications.filter((item) => !item.isRead && item.ticketId === ticket.id);
+    if (unreadTicketNotifications.length) {
+      setNotifications((current) =>
+        current.map((item) => (item.ticketId === ticket.id ? { ...item, isRead: true } : item)),
+      );
+      Promise.allSettled(unreadTicketNotifications.map((item) => api.markNotificationRead(item.id))).catch(() => undefined);
+    }
     const token = api.getToken();
     if (token) getSocket(token).emit('ticket:join', ticket.id);
   }
@@ -195,6 +204,20 @@ export function App() {
     setTickets([]);
     setSelectedTicket(null);
     setView('dashboard');
+    setMobileSidebarOpen(false);
+  }
+
+  function toggleSidebar() {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 980px)').matches) {
+      setMobileSidebarOpen((open) => !open);
+      return;
+    }
+    setSidebarCollapsed((collapsed) => !collapsed);
+  }
+
+  function navigate(nextView: 'dashboard' | 'create') {
+    setView(nextView);
+    setMobileSidebarOpen(false);
   }
 
   const filteredTickets = useMemo(() => {
@@ -206,6 +229,17 @@ export function App() {
         .some((value) => String(value).toLowerCase().includes(term)),
     );
   }, [tickets, query]);
+  const unreadByTicketId = useMemo(
+    () =>
+      notifications.reduce<Record<number, number>>((acc, item) => {
+        const isMessageNotification = item.title.toLowerCase().includes('pesan');
+        if (!item.isRead && item.ticketId && isMessageNotification) {
+          acc[item.ticketId] = (acc[item.ticketId] ?? 0) + 1;
+        }
+        return acc;
+      }, {}),
+    [notifications],
+  );
 
   if (loading) {
     return (
@@ -220,41 +254,59 @@ export function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'sidebar-mobile-open' : ''}`}>
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark"><TicketIcon size={22} /></div>
-          <div>
-            <strong>Task Ticketing</strong>
-            <span>{user.role}</span>
-          </div>
+        <div className="sidebar-head">
+          <button
+            className="brand brand-button"
+            type="button"
+            title={sidebarCollapsed ? 'Buka sidebar' : 'Tutup sidebar'}
+            onClick={toggleSidebar}
+          >
+            <span className="brand-mark"><TicketIcon size={22} /></span>
+            <span className="brand-copy">
+              <strong>Task Ticketing</strong>
+              <span>{user.role}</span>
+            </span>
+          </button>
+          <button
+            className="mobile-nav-button"
+            type="button"
+            title={mobileSidebarOpen ? 'Tutup menu' : 'Buka menu'}
+            onClick={() => setMobileSidebarOpen((open) => !open)}
+          >
+            {mobileSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
 
-        <nav className="nav-list">
-          <button className={view === 'dashboard' ? 'active' : ''} onClick={() => setView('dashboard')}>
-            <CircleDot size={18} /> Dashboard
-          </button>
-          <button className={view === 'create' ? 'active' : ''} onClick={() => setView('create')}>
-            <Plus size={18} /> Buat Tiket
-          </button>
-        </nav>
+        <div className="sidebar-content">
+          <nav className="nav-list">
+            <button className={view === 'dashboard' ? 'active' : ''} onClick={() => navigate('dashboard')}>
+              <CircleDot size={18} /> <span>{user.role === 'customer' ? 'Tiket Saya' : 'Dashboard'}</span>
+            </button>
+            <button className={view === 'create' ? 'active' : ''} onClick={() => navigate('create')}>
+              <Plus size={18} /> <span>Buat Tiket</span>
+            </button>
+          </nav>
 
-        <div className="profile">
-          <UserRound size={18} />
-          <div>
-            <strong>{user.name}</strong>
-            <span>{user.email}</span>
+          <div className="profile">
+            <UserRound size={18} />
+            <div className="profile-copy">
+              <strong>{user.name}</strong>
+              <span>{user.email}</span>
+            </div>
+            <button className="icon-button" title="Logout" onClick={logout}>
+              <LogOut size={18} />
+            </button>
           </div>
-          <button className="icon-button" title="Logout" onClick={logout}>
-            <LogOut size={18} />
-          </button>
         </div>
       </aside>
 
       <main className="workspace">
+        {view !== 'detail' && (
         <header className="topbar">
           <div>
-            <h1>{view === 'create' ? 'Buat Tiket Baru' : view === 'detail' ? selectedTicket?.ticketNumber : 'Dashboard Tiket'}</h1>
+            <h1>{view === 'create' ? 'Buat Tiket Baru' : user.role === 'customer' ? 'Tiket Saya' : 'Dashboard Tiket'}</h1>
             <p>{new Date().toLocaleDateString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</p>
           </div>
           <div className="top-actions">
@@ -292,6 +344,7 @@ export function App() {
             </div>
           </div>
         </header>
+        )}
 
         {error && <div className="alert">{error}</div>}
 
@@ -305,6 +358,8 @@ export function App() {
             onCreate={() => setView('create')}
             auditLogs={auditLogs}
             isAdmin={user.role === 'admin'}
+            isCustomer={user.role === 'customer'}
+            unreadByTicketId={unreadByTicketId}
           />
         )}
         {view === 'create' && (
@@ -410,6 +465,8 @@ function Dashboard({
   onCreate,
   auditLogs,
   isAdmin,
+  isCustomer,
+  unreadByTicketId,
 }: {
   stats: TicketStats;
   tickets: Ticket[];
@@ -419,6 +476,8 @@ function Dashboard({
   onCreate: () => void;
   auditLogs: AuditLog[];
   isAdmin: boolean;
+  isCustomer: boolean;
+  unreadByTicketId: Record<number, number>;
 }) {
   const [activeStatus, setActiveStatus] = useState<TicketStatus | 'all'>('all');
   const cards = [
@@ -438,7 +497,8 @@ function Dashboard({
   const visibleTickets = activeStatus === 'all' ? tickets : tickets.filter((ticket) => ticket.status === activeStatus);
 
   return (
-    <section className="dashboard-grid">
+    <section className={`dashboard-grid ${isCustomer ? 'customer-dashboard' : ''}`}>
+      {!isCustomer && (
       <div className="stat-row">
         {cards.map((card) => {
           const Icon = card.icon;
@@ -451,6 +511,7 @@ function Dashboard({
           );
         })}
       </div>
+      )}
 
       <div className="ticket-board">
         <div className="ticket-board-toolbar">
@@ -506,7 +567,14 @@ function Dashboard({
                   <span>{priorityLabel(ticket.priority)}</span>
                 </span>
                 <span className="subject-cell">
-                  <strong>{ticket.title}</strong>
+                  <strong>
+                    <span className="ticket-subject-title">{ticket.title}</span>
+                    {!!unreadByTicketId[ticket.id] && (
+                      <span className="ticket-unread-badge" aria-label={`${unreadByTicketId[ticket.id]} pesan belum dibaca`}>
+                        {unreadByTicketId[ticket.id]}
+                      </span>
+                    )}
+                  </strong>
                   <small>{ticket.category?.name} - {new Date(ticket.updatedAt).toLocaleDateString('id-ID')}</small>
                 </span>
                 <span className="status-cell">
@@ -671,14 +739,6 @@ function TicketDetail({
   const timelineItems = useMemo<TimelineItem[]>(() => {
     const items: TimelineItem[] = [
       { id: 'ticket-created', kind: 'created', at: ticket.createdAt },
-      ...(ticket.attachments ?? [])
-        .filter((attachment) => !attachment.messageId)
-        .map((attachment) => ({
-          id: `ticket-attachment-${attachment.id}`,
-          kind: 'ticketAttachment' as const,
-          at: attachment.uploadedAt,
-          attachment,
-        })),
       ...(ticket.messages ?? []).map((item) => ({
         id: `message-${item.id}`,
         kind: 'message' as const,
@@ -727,9 +787,9 @@ function TicketDetail({
     setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
-  async function send(event: FormEvent) {
-    event.preventDefault();
+  async function submitMessage() {
     if (!canReply) return;
+    if (busy) return;
     if (!message.trim() && !files.length) return;
     setBusy(true);
     onError('');
@@ -749,6 +809,18 @@ function TicketDetail({
     }
   }
 
+  function send(event: FormEvent) {
+    event.preventDefault();
+    submitMessage();
+  }
+
+  function handleMessageKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.ctrlKey && event.key === 'Enter') {
+      event.preventDefault();
+      submitMessage();
+    }
+  }
+
   async function patch(payload: { status?: string; assignedTo?: number }) {
     setBusy(true);
     onError('');
@@ -764,29 +836,39 @@ function TicketDetail({
   return (
     <section className="detail-layout">
       <article className="ticket-main">
-        <div className="detail-head">
-          <button className="ghost-button" onClick={onBack}>Kembali</button>
-          <div>
-            <h2>{ticket.title}</h2>
-            <span>{ticket.ticketNumber} - {ticket.category?.name}</span>
-          </div>
-          <StatusBadge status={ticket.status} />
-        </div>
-
-        <p className="description">{ticket.description}</p>
-
         <div className="message-panel conversation-panel">
           <div className="message-title conversation-title">
-            <MessageSquareText size={19} />
-            <strong>Diskusi</strong>
+            <div className="conversation-heading">
+              <button className="ghost-button compact" onClick={onBack}>Kembali</button>
+              <MessageSquareText size={18} />
+              <strong>Diskusi</strong>
+            </div>
+            <StatusBadge status={ticket.status} />
           </div>
           <div className="conversation-timeline">
             {timelineItems.map((item) => {
               if (item.kind === 'created') {
+                const isMine = ticket.customerId === currentUser.id;
+                const ticketAttachments = (ticket.attachments ?? []).filter((attachment) => !attachment.messageId);
                 return (
-                  <div className="activity-line" key={item.id}>
-                    <span>{ticket.customer?.name ?? 'Customer'} membuat tiket</span>
-                    <time>{new Date(item.at).toLocaleString('id-ID')}</time>
+                  <div className={`conversation-entry ticket-origin ${isMine ? 'mine' : 'other'} role-customer`} key={item.id}>
+                    <article className="message-card role-customer">
+                      <header className="message-card-head">
+                        <strong>{ticket.customer?.name ?? 'Customer'}</strong>
+                        <time>{new Date(item.at).toLocaleString('id-ID')}</time>
+                      </header>
+                      <div className="message-card-body">
+                        <span className="ticket-origin-label">Deskripsi kendala</span>
+                        <p>{ticket.description}</p>
+                      </div>
+                      {!!ticketAttachments.length && (
+                        <div className="message-attachments ticket-origin-attachments">
+                          {ticketAttachments.map((attachment) => (
+                            <AttachmentLink attachment={attachment} key={attachment.id} />
+                          ))}
+                        </div>
+                      )}
+                    </article>
                   </div>
                 );
               }
@@ -803,22 +885,6 @@ function TicketDetail({
                   <div className="activity-line workflow-line" key={item.id}>
                     <span>Status tiket saat ini {statusLabels[ticket.status]}</span>
                     <time>{new Date(item.at).toLocaleString('id-ID')}</time>
-                  </div>
-                );
-              }
-              if (item.kind === 'ticketAttachment') {
-                return (
-                  <div className="conversation-entry" key={item.id}>
-                    <article className="message-card attachment-bubble">
-                      <header className="message-card-head">
-                        <strong>Lampiran tiket</strong>
-                        <time>{new Date(item.at).toLocaleString('id-ID')}</time>
-                      </header>
-                      <div className="message-card-body">
-                        <p>Lampiran pendukung tiket.</p>
-                      </div>
-                      <AttachmentLink attachment={item.attachment} />
-                    </article>
                   </div>
                 );
               }
@@ -875,8 +941,9 @@ function TicketDetail({
                 className="chat-input"
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={handleMessageKeyDown}
                 placeholder="Type a message..."
-                rows={4}
+                rows={2}
               />
               <div className="composer-footer">
                 <div className="composer-tools">
@@ -912,6 +979,12 @@ function TicketDetail({
       </article>
 
       <aside className="detail-side">
+        <div className="ticket-summary">
+          <span>Detail Tiket</span>
+          <h2>{ticket.title}</h2>
+          <strong>{ticket.ticketNumber}</strong>
+          <small>{ticket.category?.name}</small>
+        </div>
         <InfoRow label="Customer" value={ticket.customer?.name} />
         <InfoRow label="Support PIC" value={ticket.assignee?.name ?? 'Belum assign'} />
         <InfoRow label="Prioritas" value={<PriorityBadge priority={ticket.priority} />} />

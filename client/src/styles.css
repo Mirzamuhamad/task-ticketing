@@ -284,6 +284,11 @@ select:focus {
   display: grid;
   grid-template-columns: 280px 1fr;
   background: #eef5ff;
+  transition: grid-template-columns 0.2s ease;
+}
+
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 84px 1fr;
 }
 
 .sidebar {
@@ -293,6 +298,81 @@ select:focus {
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 26px;
+}
+
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-content {
+  display: contents;
+}
+
+.brand-button {
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.mobile-nav-button {
+  display: none;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #1c4f91;
+  background: #eef5ff;
+}
+
+.brand-copy,
+.profile-copy {
+  min-width: 0;
+}
+
+.brand-copy {
+  display: grid;
+  color: #152238;
+  font-size: 1rem;
+}
+
+.brand-copy span {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.sidebar-collapsed .sidebar {
+  padding: 20px 14px;
+}
+
+.sidebar-collapsed .sidebar-head {
+  justify-content: center;
+}
+
+.sidebar-collapsed .brand {
+  justify-content: center;
+}
+
+.sidebar-collapsed .brand-copy,
+.sidebar-collapsed .profile-copy,
+.sidebar-collapsed .nav-list button span {
+  display: none;
+}
+
+.sidebar-collapsed .nav-list button {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebar-collapsed .profile {
+  grid-template-columns: 1fr;
+  justify-items: center;
 }
 
 .nav-list {
@@ -311,6 +391,10 @@ select:focus {
   background: transparent;
   color: #43556d;
   font-weight: 600;
+}
+
+.nav-list button svg {
+  flex: 0 0 auto;
 }
 
 .nav-list button.active,
@@ -462,6 +546,10 @@ select:focus {
 .dashboard-grid {
   display: grid;
   gap: 20px;
+}
+
+.customer-dashboard {
+  gap: 0;
 }
 
 .stat-row {
@@ -656,6 +744,32 @@ select:focus {
   color: #172236;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.subject-cell strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ticket-subject-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticket-unread-badge {
+  min-width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 6px;
+  color: #ffffff;
+  background: #e03131;
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .requester-copy small,
@@ -856,12 +970,19 @@ select:focus {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 18px;
-  align-items: start;
+  align-items: stretch;
+  min-height: calc(100vh - 52px);
+  height: calc(100vh - 52px);
 }
 
 .ticket-main,
 .detail-side {
   padding: 18px;
+  min-height: 0;
+}
+
+.ticket-main {
+  display: grid;
 }
 
 .detail-head {
@@ -893,7 +1014,10 @@ select:focus {
 }
 
 .conversation-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 16px;
+  min-height: 0;
+  height: 100%;
 }
 
 .conversation-title {
@@ -902,14 +1026,28 @@ select:focus {
   border-bottom: 1px solid #e8edf5;
 }
 
+.conversation-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ghost-button.compact {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.86rem;
+}
+
 .conversation-title strong {
   margin-right: auto;
 }
 
 .conversation-timeline {
-  max-height: 50vh;
+  min-height: 0;
   overflow: auto;
   display: grid;
+  align-content: start;
   gap: 20px;
   padding: 4px 2px 4px 0;
 }
@@ -1029,6 +1167,18 @@ select:focus {
   white-space: pre-wrap;
 }
 
+.ticket-origin .message-card {
+  max-width: min(760px, 92%);
+}
+
+.ticket-origin-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #6d7b8f;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .message-card .attachment-link {
   margin: 0 14px 14px;
 }
@@ -1087,22 +1237,31 @@ select:focus {
   margin: 8px 0;
 }
 
+.ticket-origin-attachments {
+  margin: 8px 0 0;
+  padding: 0 14px 14px;
+}
+
+.ticket-origin-attachments .attachment-link {
+  margin: 0;
+}
+
 .reply-box {
   border-top: 1px solid var(--line);
-  padding-top: 14px;
+  padding-top: 8px;
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .chat-composer {
-  padding: 12px;
+  padding: 8px 10px;
   border: 1px solid #dfe6ef;
   border-radius: 8px;
   background: #ffffff;
 }
 
 .chat-input {
-  min-height: 96px;
+  min-height: 48px;
   border: 0;
   padding: 0;
   box-shadow: none;
@@ -1118,7 +1277,7 @@ select:focus {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding-top: 10px;
+  padding-top: 7px;
   border-top: 1px solid #edf1f6;
 }
 
@@ -1295,9 +1454,43 @@ select:focus {
 
 .detail-side {
   display: grid;
+  align-content: start;
   gap: 14px;
   position: sticky;
   top: 18px;
+  height: 100%;
+  max-height: calc(100vh - 52px);
+  overflow: auto;
+}
+
+.ticket-summary {
+  display: grid;
+  gap: 7px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ticket-summary > span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.ticket-summary h2 {
+  margin: 0;
+  color: #172236;
+  font-size: 1.05rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.ticket-summary strong {
+  color: #1c4f91;
+  font-size: 0.9rem;
+}
+
+.ticket-summary small {
+  color: var(--text-muted);
 }
 
 .info-row {
@@ -1363,6 +1556,10 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 1fr;
+  }
+
   .login-art {
     min-height: auto;
   }
@@ -1372,15 +1569,89 @@ select:focus {
     top: 0;
     z-index: 3;
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto;
+    gap: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 10px 24px rgba(24, 58, 98, 0.08);
+  }
+
+  .sidebar-collapsed .sidebar {
+    padding: 24px;
+  }
+
+  .sidebar-head,
+  .sidebar-collapsed .brand {
+    justify-content: space-between;
+  }
+
+  .sidebar-collapsed .sidebar-head {
+    justify-content: space-between;
+  }
+
+  .sidebar-collapsed .brand-copy,
+  .sidebar-collapsed .profile-copy,
+  .sidebar-collapsed .nav-list button span {
+    display: grid;
+  }
+
+  .sidebar-collapsed .nav-list button {
+    justify-content: flex-start;
+    padding: 0 12px;
+  }
+
+  .sidebar-collapsed .profile {
+    grid-template-columns: auto 1fr auto;
+    justify-items: stretch;
+  }
+
+  .brand-button {
+    width: auto;
+    min-width: 0;
+  }
+
+  .mobile-nav-button {
+    display: grid;
+  }
+
+  .sidebar-content {
+    display: none;
+    gap: 14px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .sidebar-mobile-open .sidebar-content {
+    display: grid;
   }
 
   .nav-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .detail-side {
     position: static;
+    height: auto;
+    max-height: none;
+  }
+
+  .detail-layout {
+    height: auto;
+    min-height: 0;
+    align-items: start;
+  }
+
+  .ticket-main {
+    min-height: 70vh;
+  }
+
+  .conversation-panel {
+    min-height: 70vh;
+  }
+
+  .conversation-timeline {
+    max-height: 58vh;
   }
 }
 
@@ -1391,6 +1662,10 @@ select:focus {
   .detail-side,
   .ticket-form,
   .list-panel {
+    padding: 14px;
+  }
+
+  .sidebar-collapsed .sidebar {
     padding: 14px;
   }
 
