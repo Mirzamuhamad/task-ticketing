@@ -47,4 +47,9 @@ export class User {
 
   @DeleteDateColumn({ name: 'deleted_at' })
   deletedAt?: Date | null;
+
+  toJSON() {
+    const { passwordHash, deletedAt, ...user } = this;
+    return user;
+  }
 }

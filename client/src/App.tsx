@@ -11,6 +11,7 @@ import {
   Menu,
   MessageSquareText,
   Minus,
+  Moon,
   MoreVertical,
   Paperclip,
   Plus,
@@ -18,6 +19,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Sun,
   TicketIcon,
   Trash2,
   Upload,
@@ -45,6 +47,7 @@ import type {
 } from './types';
 
 type AppView = 'dashboard' | 'create' | 'detail' | 'users' | 'password';
+type ThemeMode = 'light' | 'dark';
 
 const statusLabels: Record<TicketStatus, string> = {
   open: 'Open',
@@ -72,6 +75,10 @@ type TimelineItem =
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    if (typeof localStorage === 'undefined') return 'light';
+    return localStorage.getItem('ticketing_theme') === 'dark' ? 'dark' : 'light';
+  });
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<TicketStats>(emptyStats);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -86,6 +93,11 @@ export function App() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('ticketing_theme', theme);
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   const refresh = async () => {
     if (!api.getToken()) return;
@@ -256,11 +268,11 @@ export function App() {
   }
 
   if (!user) {
-    return <LoginPage onLogin={setUser} />;
+    return <LoginPage onLogin={setUser} theme={theme} setTheme={setTheme} />;
   }
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'sidebar-mobile-open' : ''}`}>
+    <div className={`app-shell theme-${theme} ${sidebarCollapsed ? 'sidebar-collapsed' : ''} ${mobileSidebarOpen ? 'sidebar-mobile-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-head">
           <button
@@ -302,6 +314,8 @@ export function App() {
               <ShieldCheck size={18} /> <span>Change Password</span>
             </button>
           </nav>
+
+          <ThemeSwitch theme={theme} setTheme={setTheme} />
 
           <div className="profile">
             <UserRound size={18} />
@@ -427,7 +441,36 @@ export function App() {
   );
 }
 
-function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
+function ThemeSwitch({ theme, setTheme }: { theme: ThemeMode; setTheme: (theme: ThemeMode) => void }) {
+  const isDark = theme === 'dark';
+
+  return (
+    <button
+      className={`theme-switch ${isDark ? 'active' : ''}`}
+      type="button"
+      title={isDark ? 'Gunakan light mode' : 'Gunakan dark mode'}
+      aria-label={isDark ? 'Gunakan light mode' : 'Gunakan dark mode'}
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+    >
+      <span className="theme-switch-track">
+        <span className="theme-switch-thumb">
+          {isDark ? <Moon size={15} /> : <Sun size={15} />}
+        </span>
+      </span>
+      <span className="theme-switch-copy">{isDark ? 'Dark mode' : 'Light mode'}</span>
+    </button>
+  );
+}
+
+function LoginPage({
+  onLogin,
+  theme,
+  setTheme,
+}: {
+  onLogin: (user: User) => void;
+  theme: ThemeMode;
+  setTheme: (theme: ThemeMode) => void;
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -449,14 +492,17 @@ function LoginPage({ onLogin }: { onLogin: (user: User) => void }) {
   }
 
   return (
-    <main className="login-page">
+    <main className={`login-page theme-${theme}`}>
       <section className="login-panel">
-        <div className="brand login-brand">
-          <div className="brand-mark"><ShieldCheck size={24} /></div>
-          <div>
-            <strong>Portal Task Ticketing</strong>
-            <span>Support desk realtime</span>
+        <div className="login-head">
+          <div className="brand login-brand">
+            <div className="brand-mark"><ShieldCheck size={24} /></div>
+            <div>
+              <strong>Portal Task Ticketing</strong>
+              <span>Support desk realtime</span>
+            </div>
           </div>
+          <ThemeSwitch theme={theme} setTheme={setTheme} />
         </div>
         <form onSubmit={submit} className="form-stack">
           <label>
@@ -1242,6 +1288,13 @@ function TicketDetail({
     }
   }
 
+  function chatSide(senderRole: Role | undefined, senderId: number) {
+    if (currentUser.role === 'admin') {
+      return senderRole === 'customer' ? 'other' : 'mine';
+    }
+    return senderId === currentUser.id ? 'mine' : 'other';
+  }
+
   async function patch(payload: { status?: string; assignedTo?: number }) {
     setBusy(true);
     onError('');
@@ -1269,10 +1322,10 @@ function TicketDetail({
           <div className="conversation-timeline">
             {timelineItems.map((item) => {
               if (item.kind === 'created') {
-                const isMine = ticket.customerId === currentUser.id;
+                const side = chatSide('customer', ticket.customerId);
                 const ticketAttachments = (ticket.attachments ?? []).filter((attachment) => !attachment.messageId);
                 return (
-                  <div className={`conversation-entry ticket-origin ${isMine ? 'mine' : 'other'} role-customer`} key={item.id}>
+                  <div className={`conversation-entry ticket-origin ${side} role-customer`} key={item.id}>
                     <article className="message-card role-customer">
                       <header className="message-card-head">
                         <strong>{ticket.customer?.name ?? 'Customer'}</strong>
@@ -1309,10 +1362,10 @@ function TicketDetail({
                   </div>
                 );
               }
-              const isMine = item.message.senderId === currentUser.id;
               const senderRole = item.message.sender?.role ?? 'customer';
+              const side = chatSide(senderRole, item.message.senderId);
               return (
-                <div className={`conversation-entry ${isMine ? 'mine' : 'other'} role-${senderRole}`} key={item.id}>
+                <div className={`conversation-entry ${side} role-${senderRole}`} key={item.id}>
                   <article className={`message-card role-${senderRole}`}>
                     <header className="message-card-head">
                       <strong>{item.message.sender?.name}</strong>
