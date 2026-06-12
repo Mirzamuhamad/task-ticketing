@@ -1,11 +1,15 @@
 import {
   Bell,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
   Clock3,
+  Filter,
   Loader2,
   LogOut,
   MessageSquareText,
+  Minus,
+  MoreVertical,
   Paperclip,
   Plus,
   RefreshCw,
@@ -21,7 +25,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { api, uploadUrl } from './lib/api';
 import { disconnectSocket, getSocket } from './lib/socket';
-import type { Attachment, AuditLog, Category, NotificationItem, Ticket, TicketPriority, TicketStats, TicketStatus, User } from './types';
+import type {
+  Attachment,
+  AuditLog,
+  Category,
+  NotificationItem,
+  Ticket,
+  TicketMessage,
+  TicketPriority,
+  TicketStats,
+  TicketStatus,
+  TicketWorkflowLog,
+  User,
+} from './types';
 
 const statusLabels: Record<TicketStatus, string> = {
   open: 'Open',
@@ -40,6 +56,13 @@ const emptyStats: TicketStats = {
   byStatus: { open: 0, assigned: 0, in_progress: 0, waiting_customer: 0, solved: 0, closed: 0 },
   latest: [],
 };
+
+type TimelineItem =
+  | { id: string; kind: 'created'; at: string }
+  | { id: string; kind: 'workflow'; at: string; log: TicketWorkflowLog }
+  | { id: string; kind: 'workflowFallback'; at: string }
+  | { id: string; kind: 'ticketAttachment'; at: string; attachment: Attachment }
+  | { id: string; kind: 'message'; at: string; message: TicketMessage };
 
 export function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -397,12 +420,22 @@ function Dashboard({
   auditLogs: AuditLog[];
   isAdmin: boolean;
 }) {
+  const [activeStatus, setActiveStatus] = useState<TicketStatus | 'all'>('all');
   const cards = [
     { label: 'Open', value: stats.byStatus.open, icon: CircleDot },
     { label: 'In Progress', value: stats.byStatus.in_progress, icon: Clock3 },
     { label: 'Solved', value: stats.byStatus.solved, icon: CheckCircle2 },
     { label: 'Closed', value: stats.byStatus.closed, icon: ShieldCheck },
   ];
+  const statusTabs = [
+    { value: 'all' as const, label: 'All tickets', count: tickets.length },
+    ...statuses.map((status) => ({
+      value: status,
+      label: statusLabels[status],
+      count: tickets.filter((ticket) => ticket.status === status).length,
+    })),
+  ];
+  const visibleTickets = activeStatus === 'all' ? tickets : tickets.filter((ticket) => ticket.status === activeStatus);
 
   return (
     <section className="dashboard-grid">
@@ -419,30 +452,73 @@ function Dashboard({
         })}
       </div>
 
-      <div className="list-panel">
-        <div className="panel-toolbar">
+      <div className="ticket-board">
+        <div className="ticket-board-toolbar">
+          <button className="primary-button compact" onClick={onCreate}>
+            <Plus size={18} /> New ticket
+          </button>
           <div className="search-box">
             <Search size={18} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari tiket" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search requester" />
           </div>
-          <button className="primary-button compact" onClick={onCreate}>
-            <Plus size={18} /> Tiket
+          <button className="filter-button" type="button">
+            <Filter size={16} /> Filters <ChevronDown size={15} />
           </button>
         </div>
-        <div className="ticket-list">
-          {tickets.map((ticket) => (
-            <button className="ticket-row" key={ticket.id} onClick={() => onSelect(ticket)}>
-              <div>
-                <strong>{ticket.title}</strong>
-                <span>{ticket.ticketNumber} - {ticket.customer?.name} - {ticket.category?.name}</span>
-              </div>
-              <div className="row-meta">
-                <StatusBadge status={ticket.status} />
-                <PriorityBadge priority={ticket.priority} />
-              </div>
+        <div className="ticket-tabs">
+          {statusTabs.map((tab) => (
+            <button
+              className={activeStatus === tab.value ? 'active' : ''}
+              key={tab.value}
+              onClick={() => setActiveStatus(tab.value)}
+              type="button"
+            >
+              {tab.label} <span>({tab.count})</span>
             </button>
           ))}
-          {!tickets.length && <div className="empty-state">Belum ada tiket.</div>}
+        </div>
+        <div className="ticket-table" role="table" aria-label="Daftar tiket">
+          <div className="ticket-table-head" role="row">
+            <span className="select-cell"><input aria-label="Pilih semua tiket" type="checkbox" /></span>
+            <span>ID</span>
+            <span>Requester</span>
+            <span>Priority</span>
+            <span>Subject</span>
+            <span>Status</span>
+            <span></span>
+          </div>
+          <div className="ticket-table-body">
+            {visibleTickets.map((ticket) => (
+              <button className="ticket-table-row" key={ticket.id} onClick={() => onSelect(ticket)} role="row">
+                <span className="select-cell">
+                  <input aria-label={`Pilih ${ticket.ticketNumber}`} onClick={(event) => event.stopPropagation()} type="checkbox" />
+                </span>
+                <span className="ticket-id">{ticketShortId(ticket)}</span>
+                <span className="requester-cell">
+                  <span className="requester-avatar">{initials(ticket.customer?.name ?? ticket.title)}</span>
+                  <span className="requester-copy">
+                    <strong>{ticket.customer?.name ?? 'Unknown'}</strong>
+                    <small>User: {ticket.customer?.email ?? ticket.category?.name}</small>
+                  </span>
+                </span>
+                <span className="priority-cell">
+                  <PriorityIndicator priority={ticket.priority} />
+                  <span>{priorityLabel(ticket.priority)}</span>
+                </span>
+                <span className="subject-cell">
+                  <strong>{ticket.title}</strong>
+                  <small>{ticket.category?.name} - {new Date(ticket.updatedAt).toLocaleDateString('id-ID')}</small>
+                </span>
+                <span className="status-cell">
+                  <StatusBadge status={ticket.status} />
+                </span>
+                <span className="row-action">
+                  <MoreVertical size={18} />
+                </span>
+              </button>
+            ))}
+          </div>
+          {!visibleTickets.length && <div className="empty-state">Belum ada tiket.</div>}
         </div>
       </div>
 
@@ -578,45 +654,93 @@ function TicketDetail({
   onError: (message: string) => void;
 }) {
   const [message, setMessage] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const canManage = currentUser.role === 'admin' || currentUser.role === 'support';
   const canClose = (currentUser.role === 'admin' || currentUser.id === ticket.customerId) && ticket.status === 'solved';
   const canReply = ticket.status !== 'closed';
-  const previewUrl = useMemo(() => {
-    if (!file || !file.type.startsWith('image/')) return null;
-    return URL.createObjectURL(file);
-  }, [file]);
+  const selectedFiles = useMemo(
+    () =>
+      files.map((file) => ({
+        file,
+        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : null,
+      })),
+    [files],
+  );
+  const timelineItems = useMemo<TimelineItem[]>(() => {
+    const items: TimelineItem[] = [
+      { id: 'ticket-created', kind: 'created', at: ticket.createdAt },
+      ...(ticket.attachments ?? [])
+        .filter((attachment) => !attachment.messageId)
+        .map((attachment) => ({
+          id: `ticket-attachment-${attachment.id}`,
+          kind: 'ticketAttachment' as const,
+          at: attachment.uploadedAt,
+          attachment,
+        })),
+      ...(ticket.messages ?? []).map((item) => ({
+        id: `message-${item.id}`,
+        kind: 'message' as const,
+        at: item.createdAt,
+        message: item,
+      })),
+      ...(ticket.workflowLogs ?? []).map((log) => ({
+        id: `workflow-${log.id}`,
+        kind: 'workflow' as const,
+        at: log.createdAt,
+        log,
+      })),
+    ];
+
+    if (ticket.status !== 'open' && !ticket.workflowLogs?.length) {
+      items.push({ id: 'workflow-fallback', kind: 'workflowFallback', at: ticket.updatedAt });
+    }
+
+    return items.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  }, [ticket]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket.messages?.length]);
+  }, [timelineItems.length]);
 
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      selectedFiles.forEach((item) => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
     };
-  }, [previewUrl]);
+  }, [selectedFiles]);
 
   useEffect(() => {
-    setFile(null);
+    setFiles([]);
     setMessage('');
   }, [ticket.id]);
+
+  function addFiles(fileList: FileList | null) {
+    if (!fileList) return;
+    const nextFiles = Array.from(fileList).filter((item) => item.type.startsWith('image/'));
+    setFiles((current) => [...current, ...nextFiles]);
+  }
+
+  function removeFile(index: number) {
+    setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  }
 
   async function send(event: FormEvent) {
     event.preventDefault();
     if (!canReply) return;
-    if (!message.trim() && !file) return;
+    if (!message.trim() && !files.length) return;
     setBusy(true);
     onError('');
     try {
-      const sentMessage = await api.sendMessage(ticket.id, message.trim() || `Lampiran: ${file?.name}`);
-      if (file) {
-        await api.uploadMessageFile(ticket.id, sentMessage.id, file);
+      const fallbackMessage = `Lampiran: ${files.map((item) => item.name).join(', ')}`;
+      const sentMessage = await api.sendMessage(ticket.id, message.trim() || fallbackMessage);
+      for (const item of files) {
+        await api.uploadMessageFile(ticket.id, sentMessage.id, item);
       }
       setMessage('');
-      setFile(null);
+      setFiles([]);
       onUpdated(await api.ticket(ticket.id));
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Gagal mengirim pesan');
@@ -651,70 +775,131 @@ function TicketDetail({
 
         <p className="description">{ticket.description}</p>
 
-        <div className="message-panel">
-          <div className="message-title">
+        <div className="message-panel conversation-panel">
+          <div className="message-title conversation-title">
             <MessageSquareText size={19} />
             <strong>Diskusi</strong>
           </div>
-          <div className="messages">
-            {(ticket.attachments ?? [])
-              .filter((attachment) => !attachment.messageId)
-              .map((attachment) => (
-                <div className="message" key={`ticket-attachment-${attachment.id}`}>
-                  <div className="message-bubble attachment-bubble">
-                    <strong>Lampiran tiket</strong>
-                    <AttachmentLink attachment={attachment} />
-                    <span>{new Date(attachment.uploadedAt).toLocaleString('id-ID')}</span>
+          <div className="conversation-timeline">
+            {timelineItems.map((item) => {
+              if (item.kind === 'created') {
+                return (
+                  <div className="activity-line" key={item.id}>
+                    <span>{ticket.customer?.name ?? 'Customer'} membuat tiket</span>
+                    <time>{new Date(item.at).toLocaleString('id-ID')}</time>
                   </div>
-                </div>
-              ))}
-            {(ticket.messages ?? []).map((item) => (
-              <div className={`message ${item.senderId === currentUser.id ? 'mine' : ''}`} key={item.id}>
-                <div className="message-bubble">
-                  <strong>{item.sender?.name}</strong>
-                  <p>{item.message}</p>
-                  {!!item.attachments?.length && (
-                    <div className="message-attachments">
-                      {item.attachments.map((attachment) => (
-                        <AttachmentLink attachment={attachment} key={attachment.id} />
-                      ))}
+                );
+              }
+              if (item.kind === 'workflow') {
+                return (
+                  <div className="activity-line workflow-line" key={item.id}>
+                    <span>{item.log.message}</span>
+                    <time>{new Date(item.at).toLocaleString('id-ID')}</time>
+                  </div>
+                );
+              }
+              if (item.kind === 'workflowFallback') {
+                return (
+                  <div className="activity-line workflow-line" key={item.id}>
+                    <span>Status tiket saat ini {statusLabels[ticket.status]}</span>
+                    <time>{new Date(item.at).toLocaleString('id-ID')}</time>
+                  </div>
+                );
+              }
+              if (item.kind === 'ticketAttachment') {
+                return (
+                  <div className="conversation-entry" key={item.id}>
+                    <article className="message-card attachment-bubble">
+                      <header className="message-card-head">
+                        <strong>Lampiran tiket</strong>
+                        <time>{new Date(item.at).toLocaleString('id-ID')}</time>
+                      </header>
+                      <div className="message-card-body">
+                        <p>Lampiran pendukung tiket.</p>
+                      </div>
+                      <AttachmentLink attachment={item.attachment} />
+                    </article>
+                  </div>
+                );
+              }
+              const isMine = item.message.senderId === currentUser.id;
+              const senderRole = item.message.sender?.role ?? 'customer';
+              return (
+                <div className={`conversation-entry ${isMine ? 'mine' : 'other'} role-${senderRole}`} key={item.id}>
+                  <article className={`message-card role-${senderRole}`}>
+                    <header className="message-card-head">
+                      <strong>{item.message.sender?.name}</strong>
+                      <time>{new Date(item.at).toLocaleString('id-ID')}</time>
+                    </header>
+                    <div className="message-card-body">
+                      <p>{item.message.message}</p>
                     </div>
-                  )}
-                  <span>{new Date(item.createdAt).toLocaleString('id-ID')}</span>
+                    {!!item.message.attachments?.length && (
+                      <div className="message-attachments">
+                        {item.message.attachments.map((attachment) => (
+                          <AttachmentLink attachment={attachment} key={attachment.id} />
+                        ))}
+                      </div>
+                    )}
+                  </article>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <div ref={bottomRef} />
           </div>
           {canReply ? (
-            <form className="reply-box" onSubmit={send}>
-              {file && (
-                <div className="selected-file-preview">
-                  {previewUrl ? (
-                    <img src={previewUrl} alt={file.name} />
-                  ) : (
-                    <div className="selected-file-icon">
-                      <Paperclip size={18} />
+            <form className="reply-box chat-composer" onSubmit={send}>
+              {!!selectedFiles.length && (
+                <div className="selected-file-list">
+                  {selectedFiles.map((item, index) => (
+                    <div className="selected-file-preview" key={`${item.file.name}-${item.file.lastModified}-${index}`}>
+                      {item.previewUrl ? (
+                        <img src={item.previewUrl} alt={item.file.name} />
+                      ) : (
+                        <div className="selected-file-icon">
+                          <Paperclip size={18} />
+                        </div>
+                      )}
+                      <div>
+                        <strong>{item.file.name}</strong>
+                        <span>{formatFileSize(item.file.size)}</span>
+                      </div>
+                      <button type="button" className="icon-button mini" title="Hapus lampiran" onClick={() => removeFile(index)}>
+                        <X size={16} />
+                      </button>
                     </div>
-                  )}
-                  <div>
-                    <strong>{file.name}</strong>
-                    <span>{formatFileSize(file.size)}</span>
-                  </div>
-                  <button type="button" className="icon-button mini" title="Hapus lampiran" onClick={() => setFile(null)}>
-                    <X size={16} />
-                  </button>
+                  ))}
                 </div>
               )}
-              <div className="reply-controls">
-                <label className={`chat-file-button ${file ? 'has-file' : ''}`} title={file ? file.name : 'Lampirkan file'}>
-                  <Paperclip size={18} />
-                  <input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-                </label>
-                <input value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Tulis pesan" />
-                <button className="icon-button filled" title="Kirim pesan" disabled={busy}>
-                  <Send size={18} />
-                </button>
+              <textarea
+                className="chat-input"
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder="Type a message..."
+                rows={4}
+              />
+              <div className="composer-footer">
+                <div className="composer-tools">
+                  <label className={`composer-icon chat-file-button ${files.length ? 'has-file' : ''}`} title="Upload image">
+                    <Upload size={16} />
+                    <span>Upload image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(event) => {
+                        addFiles(event.target.files);
+                        event.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="composer-submit">
+                  <button className="primary-button compact" disabled={busy}>
+                    {busy ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
+                    Submit
+                  </button>
+                </div>
               </div>
             </form>
           ) : (
@@ -770,6 +955,35 @@ function InfoRow({ label, value }: { label: string; value: ReactNode }) {
       <strong>{value}</strong>
     </div>
   );
+}
+
+function ticketShortId(ticket: Ticket) {
+  return `#${ticket.id.toString().padStart(3, '0')}`;
+}
+
+function initials(value: string) {
+  return value
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+function priorityLabel(priority: TicketPriority) {
+  const labels: Record<TicketPriority, string> = {
+    low: 'Low',
+    medium: 'Medium',
+    high: 'High',
+    critical: 'Highest',
+  };
+  return labels[priority];
+}
+
+function PriorityIndicator({ priority }: { priority: TicketPriority }) {
+  if (priority === 'low') return <ChevronDown className="priority-icon low" size={15} />;
+  if (priority === 'medium') return <Minus className="priority-icon medium" size={15} />;
+  return <ChevronDown className={`priority-icon ${priority}`} size={15} />;
 }
 
 function StatusBadge({ status }: { status: TicketStatus }) {
