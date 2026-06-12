@@ -1,0 +1,18 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: task-ticketing-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-task_ticketing}
+      MYSQL_USER: ${MYSQL_USER:-ticketing}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ticketing}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+
+volumes:
+  mysql_data:
