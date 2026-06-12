@@ -5,6 +5,7 @@ import * as bcrypt from 'bcryptjs';
 import { AuditService } from '../audit/audit.service';
 import { UserStatus } from '../common/enums';
 import { UsersService } from '../users/users.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 
 @Injectable()
@@ -28,5 +29,17 @@ export class AuthService {
     const token = await this.jwt.signAsync({ sub: user.id, email: user.email, role: user.role, name: user.name });
     await this.audit.record(user.id, 'Login berhasil', ipAddress);
     return { user: publicUser, accessToken: token };
+  }
+
+  async changePassword(userId: number, dto: ChangePasswordDto, ipAddress?: string) {
+    const user = await this.users.require(userId);
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) {
+      await this.audit.record(user.id, 'Gagal mengganti password', ipAddress);
+      throw new UnauthorizedException('Password saat ini salah');
+    }
+    await this.users.updatePassword(user.id, dto.newPassword);
+    await this.audit.record(user.id, 'Mengganti password', ipAddress);
+    return { ok: true };
   }
 }

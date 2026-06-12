@@ -1,4 +1,4 @@
-import type { AuditLog, Category, NotificationItem, Ticket, TicketMessage, TicketPriority, TicketStats, User } from '../types';
+import type { AuditLog, Category, NotificationItem, Role, Ticket, TicketMessage, TicketPriority, TicketStats, User } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
 
@@ -48,12 +48,34 @@ export class ApiClient {
     return this.request<User>('/auth/me');
   }
 
+  changePassword(payload: { currentPassword: string; newPassword: string }) {
+    return this.request<{ ok: boolean }>('/auth/change-password', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
   categories() {
     return this.request<Category[]>('/categories');
   }
 
   users() {
     return this.request<User[]>('/users');
+  }
+
+  createUser(payload: { name: string; email: string; password: string; role: Role }) {
+    return this.request<User>('/users', { method: 'POST', body: JSON.stringify(payload) });
+  }
+
+  updateUser(id: number, payload: { name?: string; email?: string; password?: string; role?: Role; status?: string }) {
+    return this.request<User>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+  }
+
+  deleteUser(id: number) {
+    return this.request<{ ok: boolean }>(`/users/${id}`, { method: 'DELETE' });
+  }
+
+  uploadUserPhoto(id: number, file: File) {
+    const data = new FormData();
+    data.append('file', file);
+    return this.request<User>(`/users/${id}/photo`, { method: 'POST', body: data });
   }
 
   tickets() {

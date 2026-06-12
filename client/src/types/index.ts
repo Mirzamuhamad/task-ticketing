@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: Role;
   status: string;
+  avatarPath?: string | null;
 }
 
 export interface Category {
