@@ -13,6 +13,7 @@ import { Category } from '../categories/category.entity';
 import { TicketPriority, TicketStatus } from '../common/enums';
 import { TicketMessage } from '../messages/ticket-message.entity';
 import { User } from '../users/user.entity';
+import { TicketWorkflowLog } from './ticket-workflow-log.entity';
 
 @Entity('tickets')
 export class Ticket {
@@ -63,6 +64,9 @@ export class Ticket {
 
   @OneToMany(() => Attachment, (attachment) => attachment.ticket)
   attachments: Attachment[];
+
+  @OneToMany(() => TicketWorkflowLog, (log) => log.ticket)
+  workflowLogs: TicketWorkflowLog[];
 
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;

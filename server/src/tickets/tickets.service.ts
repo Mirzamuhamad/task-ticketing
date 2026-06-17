@@ -8,12 +8,23 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import { TicketWorkflowLog } from './ticket-workflow-log.entity';
 import { Ticket } from './ticket.entity';
+
+const statusLabels: Record<TicketStatus, string> = {
+  [TicketStatus.Open]: 'Open',
+  [TicketStatus.Assigned]: 'Assigned',
+  [TicketStatus.InProgress]: 'In Progress',
+  [TicketStatus.WaitingCustomer]: 'Waiting Customer',
+  [TicketStatus.Solved]: 'Solved',
+  [TicketStatus.Closed]: 'Closed',
+};
 
 @Injectable()
 export class TicketsService {
   constructor(
     @InjectRepository(Ticket) private readonly tickets: Repository<Ticket>,
+    @InjectRepository(TicketWorkflowLog) private readonly workflowLogs: Repository<TicketWorkflowLog>,
     private readonly categories: CategoriesService,
     private readonly users: UsersService,
     private readonly audit: AuditService,
@@ -77,8 +88,8 @@ export class TicketsService {
   async requireVisible(id: number, actor: any) {
     const ticket = await this.tickets.findOne({
       where: { id },
-      relations: { messages: { attachments: true }, attachments: true },
-      order: { messages: { createdAt: 'ASC' } },
+      relations: { messages: { attachments: true }, attachments: true, workflowLogs: true },
+      order: { messages: { createdAt: 'ASC' }, workflowLogs: { createdAt: 'ASC' } },
     });
     if (!ticket) {
       throw new NotFoundException('Tiket tidak ditemukan');
@@ -95,11 +106,20 @@ export class TicketsService {
       throw new ForbiddenException('Hanya admin atau support yang dapat mengubah tiket');
     }
 
+    const previousStatus = ticket.status;
+    const previousAssigneeName = ticket.assignee?.name ?? null;
+    let assignedLog: { fromValue?: string | null; toValue?: string | null; message: string } | null = null;
+
     if (actor.role === UserRole.Support && !ticket.assignedTo) {
       ticket.assignedTo = actor.id;
       if (ticket.status === TicketStatus.Open) {
         ticket.status = TicketStatus.Assigned;
       }
+      assignedLog = {
+        fromValue: previousAssigneeName,
+        toValue: actor.name,
+        message: `${actor.name} mengambil tiket ini`,
+      };
       await this.notifications.create(ticket.customerId, 'Tiket ditangani', `${ticket.ticketNumber} sedang ditangani support.`, ticket.id);
     }
 
@@ -113,6 +133,11 @@ export class TicketsService {
       }
       ticket.assignedTo = dto.assignedTo;
       ticket.status = ticket.status === TicketStatus.Open ? TicketStatus.Assigned : ticket.status;
+      assignedLog = {
+        fromValue: previousAssigneeName,
+        toValue: assignee.name,
+        message: `${actor.name} menugaskan tiket ini kepada ${assignee.name}`,
+      };
       await this.notifications.create(dto.assignedTo, 'Tiket ditugaskan', `${ticket.ticketNumber} ditugaskan kepada Anda.`, ticket.id);
     }
 
@@ -124,6 +149,19 @@ export class TicketsService {
     }
 
     const saved = await this.tickets.save(ticket);
+    if (assignedLog) {
+      await this.logWorkflow(saved.id, actor, 'assigned', assignedLog.message, assignedLog.fromValue, assignedLog.toValue);
+    }
+    if (previousStatus !== saved.status) {
+      await this.logWorkflow(
+        saved.id,
+        actor,
+        'status_changed',
+        `${actor.name} mengubah status dari ${statusLabels[previousStatus]} ke ${statusLabels[saved.status]}`,
+        previousStatus,
+        saved.status,
+      );
+    }
     await this.audit.record(actor.id, `Mengubah tiket ${ticket.ticketNumber}`, ipAddress);
     return this.requireVisible(saved.id, actor);
   }
@@ -134,9 +172,18 @@ export class TicketsService {
     if (!ownerOrAdmin || ticket.status !== TicketStatus.Solved) {
       throw new ForbiddenException('Tiket hanya bisa ditutup oleh customer saat status solved');
     }
+    const previousStatus = ticket.status;
     ticket.status = TicketStatus.Closed;
     ticket.closedAt = new Date();
     const saved = await this.tickets.save(ticket);
+    await this.logWorkflow(
+      saved.id,
+      actor,
+      'closed',
+      `${actor.name} menutup tiket ini dari status ${statusLabels[previousStatus]} ke ${statusLabels[saved.status]}`,
+      previousStatus,
+      saved.status,
+    );
     await this.audit.record(actor.id, `Menutup tiket ${ticket.ticketNumber}`, ipAddress);
     if (ticket.assignedTo) {
       await this.notifications.create(ticket.assignedTo, 'Tiket closed', `${ticket.ticketNumber} sudah ditutup customer.`, ticket.id);
@@ -155,5 +202,25 @@ export class TicketsService {
     const date = today.toISOString().slice(0, 10).replace(/-/g, '');
     const count = await this.tickets.count();
     return `TCK-${date}-${String(count + 1).padStart(5, '0')}`;
+  }
+
+  private async logWorkflow(
+    ticketId: number,
+    actor: any,
+    type: string,
+    message: string,
+    fromValue?: string | null,
+    toValue?: string | null,
+  ) {
+    await this.workflowLogs.save(
+      this.workflowLogs.create({
+        ticketId,
+        actorId: actor?.id ?? null,
+        type,
+        message,
+        fromValue,
+        toValue,
+      }),
+    );
   }
 }

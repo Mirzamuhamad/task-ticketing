@@ -8,6 +8,7 @@ export interface User {
   email: string;
   role: Role;
   status: string;
+  avatarPath?: string | null;
 }
 
 export interface Category {
@@ -37,6 +38,18 @@ export interface TicketMessage {
   createdAt: string;
 }
 
+export interface TicketWorkflowLog {
+  id: number;
+  ticketId: number;
+  actorId?: number | null;
+  actor?: User | null;
+  type: string;
+  fromValue?: string | null;
+  toValue?: string | null;
+  message: string;
+  createdAt: string;
+}
+
 export interface Ticket {
   id: number;
   ticketNumber: string;
@@ -53,6 +66,7 @@ export interface Ticket {
   closedAt?: string | null;
   messages?: TicketMessage[];
   attachments?: Attachment[];
+  workflowLogs?: TicketWorkflowLog[];
   createdAt: string;
   updatedAt: string;
 }

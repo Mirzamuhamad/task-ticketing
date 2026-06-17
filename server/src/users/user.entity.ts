@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { Ticket } from '../tickets/ticket.entity';
 import { TicketMessage } from '../messages/ticket-message.entity';
 import { AuditLog } from '../audit/audit-log.entity';
@@ -24,6 +24,9 @@ export class User {
   @Column({ type: 'enum', enum: UserStatus, default: UserStatus.Active })
   status: UserStatus;
 
+  @Column({ name: 'avatar_path', type: 'varchar', length: 255, nullable: true })
+  avatarPath?: string | null;
+
   @OneToMany(() => Ticket, (ticket) => ticket.customer)
   tickets: Ticket[];
 
@@ -41,4 +44,12 @@ export class User {
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  @DeleteDateColumn({ name: 'deleted_at' })
+  deletedAt?: Date | null;
+
+  toJSON() {
+    const { passwordHash, deletedAt, ...user } = this;
+    return user;
+  }
 }
